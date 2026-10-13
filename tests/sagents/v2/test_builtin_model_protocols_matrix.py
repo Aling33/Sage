@@ -6,12 +6,9 @@ from types import SimpleNamespace
 import pytest
 from pydantic import SecretStr
 
-from sagents.v2.package.manifest.models import (
-    ModelCapabilityDeclaration,
-    ModelLimits,
-    ModelRequestDefaults,
-    ModelRoute,
-)
+from sagents.v2.contracts.errors import SageV2Error
+from sagents.v2.contracts.items import ImageBlock, JsonBlock, TextBlock
+from sagents.v2.contracts.provider_state import make_provider_state
 from sagents.v2.model import (
     AnthropicMessagesConfig,
     AnthropicMessagesModelProvider,
@@ -27,13 +24,15 @@ from sagents.v2.model import (
     OpenAIResponsesModelProvider,
     resolve_model_protocol,
 )
-from sagents.v2.contracts.items import ImageBlock, JsonBlock, TextBlock
-from sagents.v2.contracts.provider_state import make_provider_state
-from sagents.v2.contracts.errors import SageV2Error
+from sagents.v2.package.manifest.models import (
+    ModelCapabilityDeclaration,
+    ModelLimits,
+    ModelRequestDefaults,
+    ModelRoute,
+)
+from sagents.v2.runtime.credentials import CredentialMaterial
 from sagents.v2.runtime.extensions import ExtensionScope, ExtensionScopeContext
 from sagents.v2.runtime.extensions.official import builtin_extension_registry
-from sagents.v2.runtime.credentials import CredentialMaterial
-
 
 CAPABILITIES = ModelCapabilities(
     supports_streaming=True,
@@ -936,21 +935,60 @@ def test_model_factory_preserves_protocol_output_defaults(protocol, default, max
 
 @pytest.mark.parametrize("protocol", ["chat", "responses", "anthropic"])
 def test_text_only_binding_rejects_image_before_network(protocol):
-    from sagents.v2.model.plugins.openai_compatible import OpenAICompatibleConfig, OpenAICompatibleModelProvider
+    from sagents.v2.model.plugins.openai_compatible import (
+        OpenAICompatibleConfig,
+        OpenAICompatibleModelProvider,
+    )
 
     caps = CAPABILITIES.model_copy(update={"supports_multimodal_input": False})
     if protocol == "chat":
         provider = OpenAICompatibleModelProvider(
-            OpenAICompatibleConfig(base_url="https://example.invalid", model="text-only", capabilities=caps), client=object()
+            OpenAICompatibleConfig(
+                base_url="https://example.invalid", model="text-only", capabilities=caps
+            ),
+            client=object(),
         )
     elif protocol == "responses":
         provider = OpenAIResponsesModelProvider(
-            OpenAIResponsesConfig(base_url="https://example.invalid", model="text-only", capabilities=caps), client=object()
+            OpenAIResponsesConfig(
+                base_url="https://example.invalid", model="text-only", capabilities=caps
+            ),
+            client=object(),
         )
     else:
         provider = AnthropicMessagesModelProvider(
-            AnthropicMessagesConfig(base_url="https://example.invalid", model="text-only", capabilities=caps), client=object()
+            AnthropicMessagesConfig(
+                base_url="https://example.invalid", model="text-only", capabilities=caps
+            ),
+            client=object(),
         )
     with pytest.raises(SageV2Error) as caught:
         provider._validate_request(request())
     assert caught.value.info.code == "model.capability_unsupported"
+
+
+@pytest.mark.parametrize("provider_id", ["orcarouter", " OrcaRouter "])
+def test_orcarouter_resolves_to_openai_compatible_protocol(provider_id):
+    from sagents.v2.model.protocols import model_protocol_default_base_url
+
+    assert (
+        resolve_model_protocol(provider_id)
+        == BuiltinModelProtocol.OPENAI_CHAT_COMPLETIONS
+    )
+    assert (
+        model_protocol_default_base_url(provider_id) == "https://api.orcarouter.ai/v1"
+    )
+
+
+@pytest.mark.parametrize("base_url", [None, "https://gateway.example/v1"])
+def test_orcarouter_factory_uses_openai_compatible_provider(base_url):
+    from sagents.v2.model.protocols import create_registered_model_provider
+
+    provider = create_registered_model_provider(
+        ModelRoute(provider="orcarouter", base_url=base_url, model="orcarouter/auto"),
+        client=object(),
+    )
+
+    assert isinstance(provider, OpenAIChatCompletionsModelProvider)
+    assert provider.config.base_url == (base_url or "https://api.orcarouter.ai/v1")
+    assert provider.config.model == "orcarouter/auto"

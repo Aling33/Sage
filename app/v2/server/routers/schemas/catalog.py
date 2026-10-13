@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from typing import Literal
+
 from pydantic import BaseModel, Field
+
 from app.v2.server.runtime.policy import ExecutionPolicy
+
 
 class ModelBody(BaseModel):
     id: str | None = None
     protocol: str = "openai-chat-completions"
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str | None = None
     model: str
     api_key: str = ""
     is_default: bool = True
+
 
 class AgentBody(BaseModel):
     id: str | None = None
@@ -21,6 +25,7 @@ class AgentBody(BaseModel):
     tools: list[str] = Field(default_factory=list)
     execution_policy: ExecutionPolicy | None = None
 
+
 class AgentPublic(BaseModel):
     id: str
     name: str
@@ -29,13 +34,17 @@ class AgentPublic(BaseModel):
     model_id: str | None = None
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
-    execution_policy: ExecutionPolicy = Field(default_factory=lambda: ExecutionPolicy(shell="sandboxed"))
+    execution_policy: ExecutionPolicy = Field(
+        default_factory=lambda: ExecutionPolicy(shell="sandboxed")
+    )
+
 
 class ToolPublic(BaseModel):
     name: str
     category: str = ""
     source: str = "official"
     default: bool = False
+
 
 class McpBody(BaseModel):
     name: str
@@ -45,6 +54,7 @@ class McpBody(BaseModel):
     disabled: bool = False
     description: str = ""
 
+
 class McpPublic(BaseModel):
     name: str
     protocol: str
@@ -53,6 +63,7 @@ class McpPublic(BaseModel):
     description: str = ""
     tools: list[str] = Field(default_factory=list)
     has_api_key: bool = False
+
 
 class A2AAgentBody(BaseModel):
     """A remote A2A agent this tenant's Agents may delegate to.
@@ -69,6 +80,7 @@ class A2AAgentBody(BaseModel):
     disabled: bool = False
     description: str = ""
 
+
 class A2AAgentPublic(BaseModel):
     name: str
     url: str | None = None
@@ -76,6 +88,7 @@ class A2AAgentPublic(BaseModel):
     description: str = ""
     skills: list[str] = Field(default_factory=list)
     has_api_key: bool = False
+
 
 class ModelPublic(BaseModel):
     id: str

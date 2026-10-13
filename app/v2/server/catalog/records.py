@@ -17,7 +17,10 @@ from app.v2.server.observability.logging import get_logger
 from app.v2.server.runtime.policy import ExecutionPolicy
 from sagents.v2.contracts.common import new_id
 from sagents.v2.contracts.errors import ErrorCategory, RuntimeErrorInfo, SageV2Error
-from sagents.v2.model.protocols import resolve_model_protocol
+from sagents.v2.model.protocols import (
+    model_protocol_default_base_url,
+    resolve_model_protocol,
+)
 
 _LOGGER = get_logger(__name__)
 
@@ -60,7 +63,9 @@ class AgentRecord(BaseModel):
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     # A ceiling, not a grant: API Keys still default to asking for approval.
-    execution_policy: ExecutionPolicy = Field(default_factory=lambda: ExecutionPolicy(shell="sandboxed"))
+    execution_policy: ExecutionPolicy = Field(
+        default_factory=lambda: ExecutionPolicy(shell="sandboxed")
+    )
 
     def public_dict(self) -> dict[str, object]:
         return {
@@ -298,8 +303,14 @@ def upsert_agent(
         instructions=str(payload.get("instructions") or ""),
         model_id=str(payload.get("model_id") or ""),
         tools=_unique_names(payload.get("tools")),
-        execution_policy=ExecutionPolicy.model_validate(payload.get("execution_policy") or
-            (existing.execution_policy.model_dump() if existing else {"shell": "sandboxed"})),
+        execution_policy=ExecutionPolicy.model_validate(
+            payload.get("execution_policy")
+            or (
+                existing.execution_policy.model_dump()
+                if existing
+                else {"shell": "sandboxed"}
+            )
+        ),
         skills=list(existing.skills)
         if existing is not None
         else _unique_names(payload.get("skills")),
@@ -517,7 +528,9 @@ def apply_upsert(
     record = ModelRecord(
         id=model_id,
         protocol=protocol,
-        base_url=str(payload.get("base_url") or "https://api.openai.com/v1"),
+        base_url=str(
+            payload.get("base_url") or model_protocol_default_base_url(protocol)
+        ),
         model=str(payload.get("model") or "").strip(),
         api_key=SecretStr(str(payload.get("api_key") or "")),
         is_default=bool(payload.get("is_default", False) or not catalog.models),
